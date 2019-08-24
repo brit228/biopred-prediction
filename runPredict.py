@@ -1,9 +1,16 @@
+import google.cloud
+from google.cloud import logging as CloudLogging
+
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
 
 import pickle
+import logging
 import sys
+
+logging_client = CloudLogging.Client()
+logging.warning(sys.argv[1])
 
 cred = credentials.ApplicationDefault()
 firebase_admin.initialize_app(cred, {
