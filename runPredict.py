@@ -1,13 +1,60 @@
 import google.cloud
 from google.cloud import logging as CloudLogging
+from google.cloud import storage
 
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
 
+import numpy as np
+import scipy as sp
+
 import pickle
+import io
 import logging
 import sys
+
+
+def fitModel(x1, x2, m, tf1, tf2, res1, res2, res2All, M=3):
+    if res1 and res2 and res2All:
+        X = np.array([[x1,x2,x1[i-M if i-M>0 else 0:i+M+1 if i+M+1>len(x1) else len(x1)],x2[j-M if j-M>0 else 0:j+M+1 if j+M+1>len(x2) else len(x2)]] for i in range(len(x1)) for j in range(len(x2))])
+        X = sp.sparse.hstack([
+            tf1.transform(X[:,0]),
+            tf2.transform(X[:,1]),
+            tf1.transform(X[:,2]),
+            tf2.transform(X[:,3])
+        ])
+        out = m.predict_proba(X)[:,1].reshape((len(x1),len(x2)))
+    elif res1 and not res2 and res2All:
+        X = np.array([[x1,x2,x1[i-M if i-M>0 else 0:i+M+1 if i+M+1>len(x1) else len(x1)]] for i in range(len(x1))])
+        X = sp.sparse.hstack([
+            tf1.transform(X[:,0]),
+            tf2.transform(X[:,1]),
+            tf1.transform(X[:,2])
+        ])
+        out = m.predict_proba(X)[:,1].reshape((len(x1),1))
+    elif not res1 and not res2 and res2All:
+        X = np.array([[x1,x2]])
+        X = sp.sparse.hstack([
+            tf1.transform(X[:,0]),
+            tf2.transform(X[:,1])
+        ])
+        out = m.predict_proba(X)[:,1].reshape((1,1))
+    elif res1 and not res2 and not res2All:
+        X = np.array([[x1,x1[i-M if i-M>0 else 0:i+M+1 if i+M+1>len(x1) else len(x1)]] for i in range(len(x1))])
+        X = sp.sparse.hstack([
+            tf1.transform(X[:,0]),
+            tf1.transform(X[:,1])
+        ])
+        out = m.predict_proba(X)[:,1].reshape((len(x1),1))
+    elif not res1 and not res2 and not res2All:
+        X = np.array([[x1]])
+        X = sp.sparse.hstack([
+            tf1.transform(X[:,0])
+        ])
+        out = m.predict_proba(X)[:,1].reshape((1,1))
+    return out.tolist()
+
 
 logging_client = CloudLogging.Client()
 logging.warning(sys.argv[1])
@@ -18,62 +65,44 @@ firebase_admin.initialize_app(cred, {
 })
 db = firestore.client()
 
+storage_client = storage.Client()
+
 doc_ref = db.document(sys.argv[1])
 doc_dict = doc_ref.get().to_dict()
 
-logging.warning(doc_dict)
+typ1 = None
+typ2 = None
+typ3 = doc_dict['predSubSeqItem1']
+typ4 = doc_dict['predSubSeqItem2']
+typ5 = doc_dict['item2']['searchType'] == 'ALL'
 
-# typ1 = None
-# typ2 = None
-# typ3 = doc_dict['jobs']
+str_suffix = '{}_{}_{}'.format(
+    doc_dict['predSubSeqItem1']*1,
+    doc_dict['predSubSeqItem2']*1,
+    (doc_dict['item2']['searchType'] == 'ALL')*1
+)
 
-# if doct_dict['item1']['itemType'] == 0:
-#     typ1 = 'PROTEIN'
-# elif doct_dict['item1']['itemType'] == 1:
-#     typ1 = 'DNA'
-# elif doct_dict['item1']['itemType'] == 2:
-#     typ1 = 'RNA'
-# elif doct_dict['item1']['itemType'] == 3:
-#     typ1 = 'NA'
-# elif doct_dict['item1']['itemType'] == 4:
-#     typ1 = 'LIGAND'
+typ1 = doct_dict['item1']['itemType']
+typ2 = doct_dict['item2']['itemType']
 
-# if 'item2' in doc_dict:
-#     if doct_dict['item2']['itemType'] == 0:
-#         typ2 = 'PROTEIN'
-#     elif doct_dict['item2']['itemType'] == 1:
-#         typ2 = 'DNA'
-#     elif doct_dict['item2']['itemType'] == 2:
-#         typ2 = 'RNA'
-#     elif doct_dict['item2']['itemType'] == 3:
-#         typ2 = 'NA'
-#     elif doct_dict['item2']['itemType'] == 4:
-#         typ2 = 'LIGAND'
 
-# if typ1 == 'LIGAND' and typ3[0] == 'T':
-#     doc_ref.update({
-#         'status': 'error'
-#     })
-#     sys.exit()
+with io.BytesIO() as fp:
+    storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(typ1)).download_to_file(fp)
+    tf1 = pickle.dumps(fp.getvalue())
+if typ1 != typ2:
+    with io.BytesIO() as fp:
+        storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(typ2)).download_to_file(fp)
+        tf2 = pickle.dumps(fp.getvalue())
+else:
+    tf2 = tf1
 
-# if typ2 == 'LIGAND' and typ3[1] == 'T':
-#     doc_ref.update({
-#         'status': 'error'
-#     })
-#     sys.exit()
+with io.BytesIO() as fp:
+    storage_client.get_bucket('biopred-models').blob('model_{}_{}_{}.pkl'.format(typ1, typ2, str_suffix)).download_to_file(fp)
+    m = pickle.dumps(fp.getvalue())
 
-# model = pickle.loads(
-#     db.collection('model').select({
-#         'typ1': typ1,
-#         'typ2': typ2,
-#         'typ3': typ3
-#     }).stream().to_dict()['model']
-# )
-
-# res = model.predict(doc_dict['item1']['sequence'], doc_dict['item2']['sequence']).tolist()
-# doc_ref.update({
-#     'status': 'complete',
-#     'result': res
-# })
+doc_ref.update({
+    "status": "complete",
+    "result": fitModel(doc_dict['item1']['sequence'], doc_dict['item2']['sequence'], m, tf1, tf2, typ3, typ4, typ5)
+})
 
 sys.exit()
