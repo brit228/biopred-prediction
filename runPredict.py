@@ -79,12 +79,12 @@ typ1 = doc_dict['item1']['itemType'].lower()
 typ2 = doc_dict['item2']['itemType'].lower()
 typ3 = doc_dict['predSubSeqItem1']
 typ4 = doc_dict['predSubSeqItem2']
-typ5 = doc_dict['item2']['searchType'] == 'ALL'
+typ5 = doc_dict['item2']['searchType'] != 'ALL'
 
 str_suffix = '{}_{}_{}'.format(
     doc_dict['predSubSeqItem1']*1,
     doc_dict['predSubSeqItem2']*1,
-    (doc_dict['item2']['searchType'] == 'ALL')*1
+    (doc_dict['item2']['searchType'] != 'ALL')*1
 )
 
 
