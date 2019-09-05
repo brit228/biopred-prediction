@@ -87,19 +87,19 @@ str_suffix = '{}_{}_{}'.format(
 with io.BytesIO() as fp:
     storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(typ1)).download_to_file(fp)
     fp.seek(0)
-    tf1 = pickle.dumps(fp.read())
+    tf1 = pickle.loads(fp.read())
 if typ1 != typ2:
     with io.BytesIO() as fp:
         storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(typ2)).download_to_file(fp)
         fp.seek(0)
-        tf2 = pickle.dumps(fp.read())
+        tf2 = pickle.loads(fp.read())
 else:
     tf2 = tf1
 
 with io.BytesIO() as fp:
     storage_client.get_bucket('biopred-models').blob('model_{}_{}_{}.pkl'.format(typ1, typ2, str_suffix)).download_to_file(fp)
     fp.seek(0)
-    m = pickle.dumps(fp.read())
+    m = pickle.loads(fp.read())
 
 doc_ref.update({
     "status": "complete",
