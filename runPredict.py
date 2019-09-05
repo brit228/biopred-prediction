@@ -8,13 +8,16 @@ from firebase_admin import firestore
 
 import numpy as np
 import scipy as sp
-import pandas as pd
 import scipy.sparse
 
 import pickle
 import io
 import logging
 import sys
+
+
+def nestedArray(A):
+    return [{"value": c} for c in A]
 
 
 def fitModel(x1, x2, m, tf1, tf2, res1, res2, res2All, M=3):
@@ -55,7 +58,7 @@ def fitModel(x1, x2, m, tf1, tf2, res1, res2, res2All, M=3):
             tf1.transform(X[:,0])
         ])
         out = m.predict_proba(X)[:,1].reshape((1,1))
-    return out.tolist()
+    return nestedArray(out.tolist())
 
 
 logging_client = CloudLogging.Client()
