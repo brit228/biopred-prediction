@@ -8,6 +8,7 @@ from firebase_admin import firestore
 
 import numpy as np
 import scipy as sp
+import scipy.sparse
 
 import pickle
 import io
