@@ -70,8 +70,8 @@ storage_client = storage.Client()
 doc_ref = db.document(sys.argv[1])
 doc_dict = doc_ref.get().to_dict()
 
-typ1 = None
-typ2 = None
+typ1 = doc_dict['item1']['itemType'].lower()
+typ2 = doc_dict['item2']['itemType'].lower()
 typ3 = doc_dict['predSubSeqItem1']
 typ4 = doc_dict['predSubSeqItem2']
 typ5 = doc_dict['item2']['searchType'] == 'ALL'
@@ -81,9 +81,6 @@ str_suffix = '{}_{}_{}'.format(
     doc_dict['predSubSeqItem2']*1,
     (doc_dict['item2']['searchType'] == 'ALL')*1
 )
-
-typ1 = doct_dict['item1']['itemType']
-typ2 = doct_dict['item2']['itemType']
 
 
 with io.BytesIO() as fp:
