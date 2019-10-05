@@ -1,90 +1,120 @@
-import scipy
+import pandas as pd
+import numpy as np
 
-class PredictModel:
-    def __init__(self, tf1, tf2, model, sub_tf1=None, sub_tf2=None):
-        self.tf1 = tf1
-        self.tf2 = tf2
-        self.sub_tf1 = sub_tf1
-        self.sub_tf2 = sub_tf2
-        self.model = model
+from keras.layers import Input, Dense, Reshape, Flatten, Concatenate
+from keras.models import Model
 
-    def fit_tf(self, X1, X2, x1=None, x2=None):
-        self.tf1.fit(X1)
-        self.tf1.fit(X2)
-        if self.sub_tf1:
-            self.sub_tf1.fit(x1)
-        if self.sub_tf2:
-            self.sub_tf2.fit(x2)
-
-    def fit_model(self, X1, X2, y, x1=None, x2=None):
-        X1 = self.tf1.transform(X1)
-        X2 = self.tf2.transform(X2)
-        X = scipy.sparse.hstack([X1, X2])
-        if self.sub_tf1:
-            x1 = self.sub_tf1.transform(x1)
-            X = scipy.sparse.hstack([X, x1])
-        if self.sub_tf2:
-            x2 = self.sub_tf2.transform(x2)
-            X = scipy.sparse.hstack([X, x2])
-        self.model.fit(X, y)
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_curve, roc_auc_score, precision_recall_curve, average_precision_score, accuracy_score
 
 
-class PredictModelTT(PredictModel):
-    def __init__(self, tf1, tf2, model, sub_tf1, sub_tf2):
-        super().__init__(tf1, tf2, model, sub_tf1, sub_tf2)
-
-    def predict(self, X1, X2):
-        def neighbors(seq, index):
-            M = 4
-            ind1 = 0
-            ind2 = len(seq)
-            if index - M > ind1:
-                ind1 = index - M
-            if index + M < ind2:
-                ind2 = index + M
-            return seq[ind1:ind2]
+class AutoEncodeRandomForest:
+    def __init__(self, maxSeqLength):
+        self._encoder = None
+        self._randomForest = None
+        self.maxSeqLength = maxSeqLength
+        self.ngrams = 0
+        self._encode_weights = None
         
-        x1 = [neighbors(X1, i) for i in range(len(X1)) for j in range(len(X2))]
-        x2 = [neighbors(X2, j) for i in range(len(X1)) for j in range(len(X2))]
-        X1 = [X1] * len(X1) * len(X2)
-        X2 = [X2] * len(X1) * len(X2)
-        X1 = self.tf1.transform(X1)
-        X2 = self.tf2.transform(X2)
-        x1 = self.sub_tf1.transform(x1)
-        x2 = self.sub_tf2.transform(x2)
-        X = scipy.sparse.hstack([X1, X2, x1, x2])
-        return self.model.predict_proba(X)[:,1]
+    def _genEncodeData(self, x):
+        temp = np.zeros((1,self.maxSeqLength+2,28))
+        for i,v in enumerate('_'+x+'_'):
+            temp[0,i,ord(v)-65 if v!= '_' else 26] = 1.0
+        temp[0,i+1:,27] = 1.0
+        return temp
 
-class PredictModelTF(PredictModel):
-    def __init__(self, tf1, tf2, model, sub_tf1):
-        super().__init__(tf1, tf2, model, sub_tf1)
+    def _genData(self, df, M, encoder):
+        out = []
+        yout = []
+        for c in df.index:
+            seq = df.loc[c, 'sequence']
+            inter = df.loc[c, 'interaction']
+            seqEnc = encoder.predict(self._genEncodeData(seq))[0]
+            for d in range(len(seq)):
+                ind1 = d - M if d > M else 0
+                ind2 = d + M + 1 if d + M < len(seq) else len(seq)
+                temp = np.zeros((2*M+1,27))
+                for i,v in enumerate((ind1 - d + M) * '_' + seq[ind1:ind2] + (d + M + 1 - ind2) * '_'):
+                    temp[i,ord(v)-65 if v != '_' else 26] = 1.0
+                out.append(np.concatenate([temp.flatten(), seqEnc], axis=0))
+            yout += [float(i) for i in inter]
+        return np.array(out), np.array(yout)
+    
+    def _genDataPredict(self, df, M, encoder):
+        out = []
+        for c in df.index:
+            seq = df.loc[c, 'sequence']
+            seqEnc = encoder.predict(self._genEncodeData(seq))[0]
+            for d in range(len(seq)):
+                ind1 = d - M if d > M else 0
+                ind2 = d + M + 1 if d + M < len(seq) else len(seq)
+                temp = np.zeros((2*M+1,27))
+                for i,v in enumerate((ind1 - d + M) * '_' + seq[ind1:ind2] + (d + M + 1 - ind2) * '_'):
+                    temp[i,ord(v)-65 if v != '_' else 26] = 1.0
+                out.append(np.concatenate([temp.flatten(), seqEnc], axis=0))
+        return np.array(out)
+    
+    def _genDataPredictSeq(self, seq, M, encoder):
+        out = []
+        seqEnc = encoder.predict(self._genEncodeData(seq))[0]
+        for d in range(len(seq)):
+            ind1 = d - M if d > M else 0
+            ind2 = d + M + 1 if d + M < len(seq) else len(seq)
+            temp = np.zeros((2*M+1,27))
+            for i,v in enumerate((ind1 - d + M) * '_' + seq[ind1:ind2] + (d + M + 1 - ind2) * '_'):
+                temp[i,ord(v)-65 if v != '_' else 26] = 1.0
+            out.append(np.concatenate([temp.flatten(), seqEnc], axis=0))
+        return np.array(out)
 
-    def predict(self, X1, X2):
-        def neighbors(seq, index):
-            M = 4
-            ind1 = 0
-            ind2 = len(seq)
-            if index - M > ind1:
-                ind1 = index - M
-            if index + M < ind2:
-                ind2 = index + M
-            return seq[ind1:ind2]
+    def fit(self, samp, layer_size):
+        X = np.concatenate(samp['sequence'].apply(self._genEncodeData).values, axis=0)
+        input_layer = Input(shape=(X.shape[1],X.shape[2]))
+        flatten_layer = Flatten()(input_layer)
+        encoding_layer = Dense(layer_size, activation='linear')(flatten_layer)
+        out_layer = Dense(X.shape[1]*X.shape[2], activation='softmax')(encoding_layer)
+        reshape_layer = Reshape((X.shape[1],X.shape[2]))(out_layer)
+
+        model = Model(inputs=[input_layer], outputs=[reshape_layer])
+        self._encoder = Model(inputs=[input_layer], outputs=[encoding_layer])
+
+        model.compile(optimizer='nadam', loss='categorical_crossentropy', metrics=['accuracy'])
+        model.fit(X, X, epochs=25, batch_size=128, shuffle=True, verbose=True)
+        self._encode_weights = self._encoder.get_weights()
         
-        x1 = [neighbors(X1, i) for i in range(len(X1))]
-        X1 = [X1] * len(X1)
-        X2 = [X2] * len(X1)
-        X1 = self.tf1.transform(X1)
-        X2 = self.tf2.transform(X2)
-        x1 = self.sub_tf1.transform(x1)
-        X = scipy.sparse.hstack([X1, X2, x1])
-        return self.model.predict_proba(X)[:,1]
-
-class PredictModelFF(PredictModel):
-    def __init__(self, tf1, tf2, model):
-        super().__init__(tf1, tf2, model)
-
-    def predict(self, X1, X2):
-        X1 = self.tf1.transform([X1])
-        X2 = self.tf2.transform([X2])
-        X = scipy.sparse.hstack([X1, X2])
-        return self.model.predict_proba(X)[:,1]
+    def fitRandomForest(self, samp, ngrams):
+        self.ngrams = ngrams
+        x, y = self._genData(samp, ngrams, self._encoder)
+        self._randomForest = RandomForestClassifier(
+            n_estimators=64,
+            n_jobs=-1
+        )
+        self._randomForest.fit(x, y)
+        
+    def score(self, samp):        
+        x, y = self._genData(samp, self.ngrams, self._encoder)
+        return (
+            self._randomForest.score(x, y),
+            roc_auc_score(y, self._randomForest.predict_proba(x)[:,1]),
+            average_precision_score(y, self._randomForest.predict_proba(x)[:,1]),
+            x, y, self._randomForest.predict_proba(x)[:,1]
+        )
+    
+    def predict(self, samp):
+        x = self._genDataPredict(samp, self.ngrams, self._encoder)
+        return self._randomForest.predict(x)
+    
+    def predict_proba(self, samp):
+        x = self._genDataPredict(samp, self.ngrams, self._encoder)
+        return self._randomForest.predict_proba(x)
+    
+    def predict_input(self, doc_dict):
+        self._encoder.set_weights(self._encode_weights)
+        x = self._genDataPredictSeq(doc_dict['sequence'], self.ngrams, self._encoder)
+        res = self._randomForest.predict_proba(x)[:,1]
+        out = []
+        for s in range(len(doc_dict['sequence'])):
+            out.append({
+                'resabbrev': doc_dict['sequence'][s],
+                'interaction': res[s]
+            })
+        return out
