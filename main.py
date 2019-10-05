@@ -29,14 +29,15 @@ doc_dict = doc_ref.get().to_dict()
 def fit_model(doc_dict, model):
     return model.predict_input(doc_dict)
 
-with io.BytesIO() as fp:
-    storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(sys.argv[1].split('/')[0])).download_to_file(fp)
-    fp.seek(0)
-    m = pickle.loads(fp.read())
+if __name__ == "__main__":
+    with io.BytesIO() as fp:
+        storage_client.get_bucket('biopred-models').blob('model_{}.pkl'.format(sys.argv[1].split('/')[0])).download_to_file(fp)
+        fp.seek(0)
+        m = pickle.loads(fp.read())
 
-doc_ref.update({
-    "status": "complete",
-    "result": fitModel(doc_dict, m)
-})
+    doc_ref.update({
+        "status": "complete",
+        "result": fitModel(doc_dict, m)
+    })
 
-sys.exit()
+    sys.exit()
