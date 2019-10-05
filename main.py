@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     doc_ref.update({
         "status": "complete",
-        "result": fitModel(doc_dict, m)
+        "result": fit_model(doc_dict, m)
     })
 
     sys.exit()
