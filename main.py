@@ -11,7 +11,7 @@ import io
 import logging
 import sys
 
-from .models import *
+from models import *
 
 logging_client = CloudLogging.Client()
 
